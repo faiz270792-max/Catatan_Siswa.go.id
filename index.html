@@ -179,10 +179,10 @@
 
         <!-- Sidebar -->
         <div id="sidebar" class="sidebar fixed left-0 top-0 h-full w-64 bg-gradient-to-b from-blue-700 to-indigo-900 text-white z-[60]">
-            <div class="p-6 border-b border-blue-500">
+            <div class="p-3 md:p-6 border-b border-blue-500">
                 <div class="flex items-center">
-                    <div id="sidebarLogo" class="w-12 h-12 bg-white rounded-full flex items-center justify-center mr-3 overflow-hidden">
-                        <i class="fas fa-graduation-cap text-xl text-blue-600"></i>
+                    <div id="sidebarLogo" class="w-14 h-14 md:w-12 md:h-12 bg-white rounded-full flex items-center justify-center mr-3 overflow-hidden">
+                        <i class="fas fa-graduation-cap text-2xl md:text-xl text-blue-600"></i>
                     </div>
                     <div>
                         <h2 id="sidebarAppName" class="font-bold text-sm">Catatan Pelanggaran</h2>
@@ -1663,9 +1663,9 @@
                     document.getElementById('currentLogo').src = p.logo;
                     document.getElementById('currentLogo').classList.remove('hidden');
                     const sidebarLogo = document.getElementById('sidebarLogo');
-                    sidebarLogo.innerHTML = `<img src="${p.logo}" class="w-full h-full object-cover">`;
+                    sidebarLogo.innerHTML = `<img src="${p.logo}" class="w-full h-full object-contain p-1">`;
                     const loginLogo = document.getElementById('loginLogo');
-                    loginLogo.innerHTML = `<img src="${p.logo}" class="w-full h-full object-cover rounded-full">`;
+                    loginLogo.innerHTML = `<img src="${p.logo}" class="w-full h-full object-contain p-1 rounded-full">`;
                 }
             } else {
                 console.warn('Gagal memuat pengaturan:', result.message);

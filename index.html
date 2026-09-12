@@ -9,7 +9,7 @@
     <style>
         * { box-sizing: border-box; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        .sidebar { transition: all 0.3s; }
+        .sidebar { transition: transform 0.3s ease; z-index: 60; }
         .menu-item { transition: all 0.2s; }
         .menu-item:hover { background-color: rgba(255,255,255,0.1); }
         .menu-item.active { background-color: rgba(255,255,255,0.2); border-left: 4px solid #fbbf24; }
@@ -21,10 +21,77 @@
         .loading.show { display: flex; }
         .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        .table-container { overflow-x: auto; }
+        .table-container { overflow-x: auto; -webkit-overflow-scrolling: touch; }
         .badge { padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
         .page { display: none; }
         .page.active { display: block; }
+        
+        /* ===== RESPONSIVE MOBILE ===== */
+        .mobile-header { display: none; }
+        .sidebar-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 55; }
+        .sidebar-overlay.show { display: block; }
+        
+        @media (max-width: 768px) {
+            .mobile-header { 
+                display: flex; 
+                align-items: center; 
+                position: fixed; 
+                top: 0; 
+                left: 0; 
+                right: 0; 
+                height: 56px; 
+                background: linear-gradient(to right, #1d4ed8, #4338ca);
+                color: white; 
+                z-index: 50; 
+                padding: 0 16px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            }
+            .hamburger-btn { 
+                background: none; 
+                border: none; 
+                color: white; 
+                font-size: 24px; 
+                cursor: pointer; 
+                padding: 8px;
+                margin-right: 12px;
+            }
+            .mobile-title { font-size: 16px; font-weight: 600; }
+            .mobile-subtitle { font-size: 11px; opacity: 0.8; }
+            
+            .sidebar { 
+                position: fixed; 
+                top: 0; 
+                left: 0; 
+                height: 100vh; 
+                width: 280px; 
+                transform: translateX(-100%); 
+                padding-top: 0;
+            }
+            .sidebar.open { transform: translateX(0); }
+            
+            .main-content { 
+                margin-left: 0 !important; 
+                padding: 16px !important; 
+                padding-top: 72px !important; 
+            }
+            
+            h1 { font-size: 22px !important; }
+            .grid { gap: 12px !important; }
+            .flex { flex-wrap: wrap; }
+            button { min-height: 44px; }
+            input, select, textarea { min-height: 44px; font-size: 16px; }
+            table { font-size: 13px; }
+            th, td { padding: 8px 6px !important; }
+            
+            /* Modal responsive */
+            .modal > div {
+                margin: 16px !important;
+                padding: 16px !important;
+                max-height: calc(100vh - 32px) !important;
+                width: calc(100% - 32px) !important;
+            }
+            .modal h2 { font-size: 18px !important; }
+        }
         .preview-img { max-width: 200px; max-height: 200px; border-radius: 8px; margin-top: 10px; }
         .toast { position: fixed; top: 20px; right: 20px; padding: 16px 24px; border-radius: 8px; color: white; font-weight: 500; z-index: 3000; transform: translateX(120%); transition: transform 0.3s; }
         .toast.show { transform: translateX(0); }
@@ -82,8 +149,22 @@
 
     <!-- Main App -->
     <div id="mainApp" class="hidden">
+        <!-- Mobile Header -->
+        <div class="mobile-header">
+            <button class="hamburger-btn" onclick="toggleSidebar()">
+                <i class="fas fa-bars"></i>
+            </button>
+            <div>
+                <div class="mobile-title" id="mobileAppName">Catatan Pelanggaran</div>
+                <div class="mobile-subtitle" id="mobileSchoolName"></div>
+            </div>
+        </div>
+        
+        <!-- Sidebar Overlay (Mobile) -->
+        <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
         <!-- Sidebar -->
-        <div class="sidebar fixed left-0 top-0 h-full w-64 bg-gradient-to-b from-blue-700 to-indigo-900 text-white z-50">
+        <div id="sidebar" class="sidebar fixed left-0 top-0 h-full w-64 bg-gradient-to-b from-blue-700 to-indigo-900 text-white z-50">
             <div class="p-6 border-b border-blue-500">
                 <div class="flex items-center">
                     <div id="sidebarLogo" class="w-12 h-12 bg-white rounded-full flex items-center justify-center mr-3 overflow-hidden">
@@ -133,12 +214,12 @@
         </div>
 
         <!-- Content -->
-        <div class="ml-64 p-6">
+        <div class="main-content ml-0 md:ml-64 p-4 md:p-6">
             <!-- Dashboard Page -->
             <div id="page-dashboard" class="page active">
                 <h1 class="text-3xl font-bold text-gray-800 mb-6">Dashboard</h1>
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                    <div class="card bg-white rounded-xl p-6 shadow-md">
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6 mb-6 md:mb-8">
+                    <div class="card bg-white rounded-xl p-4 md:p-6 shadow-md">
                         <div class="flex items-center justify-between">
                             <div>
                                 <p class="text-gray-500 text-sm">Total Siswa</p>
@@ -204,9 +285,9 @@
 
             <!-- Siswa Page -->
             <div id="page-siswa" class="page">
-                <div class="flex justify-between items-center mb-6">
-                    <h1 class="text-3xl font-bold text-gray-800">Data Siswa</h1>
-                    <button onclick="showModal('modalSiswa')" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold transition">
+                <div class="flex justify-between items-center mb-4 md:mb-6 flex-wrap gap-3">
+                    <h1 class="text-2xl md:text-3xl font-bold text-gray-800">Data Siswa</h1>
+                    <button onclick="showModal('modalSiswa')" class="bg-blue-600 hover:bg-blue-700 text-white px-4 md:px-6 py-2 md:py-3 rounded-lg font-semibold transition text-sm md:text-base">
                         <i class="fas fa-plus mr-2"></i>Tambah Siswa
                     </button>
                 </div>
@@ -239,9 +320,9 @@
 
             <!-- Kelas Page -->
             <div id="page-kelas" class="page">
-                <div class="flex justify-between items-center mb-6">
-                    <h1 class="text-3xl font-bold text-gray-800">Data Kelas</h1>
-                    <button onclick="showModal('modalKelas')" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold transition">
+                <div class="flex justify-between items-center mb-4 md:mb-6 flex-wrap gap-3">
+                    <h1 class="text-2xl md:text-3xl font-bold text-gray-800">Data Kelas</h1>
+                    <button onclick="showModal('modalKelas')" class="bg-blue-600 hover:bg-blue-700 text-white px-4 md:px-6 py-2 md:py-3 rounded-lg font-semibold transition text-sm md:text-base">
                         <i class="fas fa-plus mr-2"></i>Tambah Kelas
                     </button>
                 </div>
@@ -424,9 +505,9 @@
 
             <!-- User Page -->
             <div id="page-user" class="page">
-                <div class="flex justify-between items-center mb-6">
-                    <h1 class="text-3xl font-bold text-gray-800">Manajemen User</h1>
-                    <button onclick="showModal('modalUser')" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold transition">
+                <div class="flex justify-between items-center mb-4 md:mb-6 flex-wrap gap-3">
+                    <h1 class="text-2xl md:text-3xl font-bold text-gray-800">Manajemen User</h1>
+                    <button onclick="showModal('modalUser')" class="bg-blue-600 hover:bg-blue-700 text-white px-4 md:px-6 py-2 md:py-3 rounded-lg font-semibold transition text-sm md:text-base">
                         <i class="fas fa-plus mr-2"></i>Tambah User
                     </button>
                 </div>
@@ -823,6 +904,21 @@
         }
 
         // ==================== NAVIGATION (DIPERBAIKI) ====================
+        // ==================== SIDEBAR TOGGLE (MOBILE) ====================
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            sidebar.classList.toggle('open');
+            overlay.classList.toggle('show');
+        }
+        
+        function closeSidebar() {
+            if (window.innerWidth <= 768) {
+                document.getElementById('sidebar').classList.remove('open');
+                document.getElementById('sidebarOverlay').classList.remove('show');
+            }
+        }
+
         document.querySelectorAll('.menu-item').forEach(item => {
             item.addEventListener('click', () => {
                 const page = item.dataset.page;
@@ -830,6 +926,8 @@
                 item.classList.add('active');
                 document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
                 document.getElementById('page-' + page).classList.add('active');
+                
+                closeSidebar(); // Tutup sidebar otomatis di mobile
                 
                 if (page === 'dashboard') safeLoad(loadDashboard);
                 if (page === 'siswa') safeLoad(loadSiswa);
@@ -1540,6 +1638,12 @@
                 document.getElementById('loginSchoolName').textContent = p.nama_sekolah || '';
                 document.getElementById('sidebarAppName').textContent = p.nama_aplikasi || 'Catatan Pelanggaran';
                 document.getElementById('sidebarSchoolName').textContent = p.nama_sekolah ? (p.nama_sekolah.length > 20 ? p.nama_sekolah.substring(0,20) + '...' : p.nama_sekolah) : '';
+                
+                // Update mobile header
+                const mobileAppName = document.getElementById('mobileAppName');
+                const mobileSchoolName = document.getElementById('mobileSchoolName');
+                if (mobileAppName) mobileAppName.textContent = p.nama_aplikasi || 'Catatan Pelanggaran';
+                if (mobileSchoolName) mobileSchoolName.textContent = p.nama_sekolah || '';
                 
                 if (p.logo) {
                     document.getElementById('currentLogo').src = p.logo;

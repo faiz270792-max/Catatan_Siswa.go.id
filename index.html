@@ -17,7 +17,7 @@
         .card:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
         .modal.show { display: flex; }
-        .loading { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(255,255,255,0.8); z-index: 2000; align-items: center; justify-content: center; }
+        .loading { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(255,255,255,0.9); z-index: 2000; align-items: center; justify-content: center; }
         .loading.show { display: flex; }
         .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
@@ -26,15 +26,24 @@
         .page { display: none; }
         .page.active { display: block; }
         .preview-img { max-width: 200px; max-height: 200px; border-radius: 8px; margin-top: 10px; }
+        .toast { position: fixed; top: 20px; right: 20px; padding: 16px 24px; border-radius: 8px; color: white; font-weight: 500; z-index: 3000; transform: translateX(120%); transition: transform 0.3s; }
+        .toast.show { transform: translateX(0); }
+        .toast.error { background-color: #ef4444; }
+        .toast.success { background-color: #22c55e; }
+        .toast.info { background-color: #3b82f6; }
     </style>
 </head>
 <body class="bg-gray-100">
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
 
     <!-- Loading Overlay -->
     <div id="loading" class="loading">
         <div class="text-center">
             <div class="spinner mx-auto mb-4"></div>
             <p class="text-gray-600">Memuat...</p>
+            <button onclick="hideLoading()" class="mt-4 text-sm text-blue-600 hover:text-blue-800 underline">(Batalkan loading)</button>
         </div>
     </div>
 
@@ -633,7 +642,6 @@
 
     <script>
         // ==================== KONFIGURASI ====================
-        // GANTI URL INI DENGAN URL DEPLOY GAS ANDA
         const GAS_URL = 'https://script.google.com/macros/s/AKfycbxyhwIocbK32sHe0R7T_hYdcyOzv0WyZHlcsropuFNgwTP2B-cdzbomw1zgnZxyUVIc6w/exec';
         
         // ==================== VARIABLES GLOBAL ====================
@@ -644,19 +652,38 @@
         let allSiswa = [];
 
         // ==================== UTILITIES ====================
-        function showLoading() { document.getElementById('loading').classList.add('show'); }
-        function hideLoading() { document.getElementById('loading').classList.remove('show'); }
+        function showLoading() { 
+            document.getElementById('loading').classList.add('show'); 
+        }
         
-        function showModal(id) { document.getElementById(id).classList.add('show'); }
-        function hideModal(id) { document.getElementById(id).classList.remove('show'); }
+        function hideLoading() { 
+            document.getElementById('loading').classList.remove('show'); 
+        }
+        
+        function showModal(id) { 
+            document.getElementById(id).classList.add('show'); 
+        }
+        
+        function hideModal(id) { 
+            document.getElementById(id).classList.remove('show'); 
+        }
 
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = `toast ${type} show`;
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 4000);
+        }
+
+        // ==================== API REQUEST (DIPERBAIKI) ====================
         async function apiRequest(action, data = {}) {
             try {
                 const formData = new FormData();
                 formData.append('action', action);
                 formData.append('data', JSON.stringify(data));
                 
-                // Handle file uploads
                 if (data._files) {
                     for (const key in data._files) {
                         if (data._files[key]) {
@@ -666,17 +693,72 @@
                     delete data._files;
                 }
                 
+                console.log('API Request:', action, data);
+                
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 30000);
+                
                 const response = await fetch(GAS_URL, {
                     method: 'POST',
                     body: formData,
-                    mode: 'cors'
+                    mode: 'cors',
+                    signal: controller.signal
                 });
                 
-                const result = await response.json();
-                return result;
+                clearTimeout(timeoutId);
+                
+                console.log('API Response status:', response.status, response.statusText);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP Error: ${response.status} ${response.statusText}`);
+                }
+                
+                const contentType = response.headers.get('content-type') || '';
+                const text = await response.text();
+                
+                console.log('API Response raw (first 500 chars):', text.substring(0, 500));
+                
+                if (contentType.includes('application/json') || text.trim().startsWith('{') || text.trim().startsWith('[')) {
+                    try {
+                        const result = JSON.parse(text);
+                        return result;
+                    } catch (jsonError) {
+                        console.error('JSON Parse Error:', jsonError);
+                        throw new Error('Response dari server bukan format JSON yang valid');
+                    }
+                } else {
+                    console.error('Response bukan JSON:', text);
+                    throw new Error('Server mengembalikan halaman HTML (bukan data). Cek konfigurasi deploy GAS Anda.');
+                }
+                
             } catch (error) {
-                console.error('API Error:', error);
-                return { success: false, message: 'Koneksi error: ' + error.message };
+                console.error('API Error detail:', error);
+                
+                if (error.name === 'AbortError') {
+                    return { success: false, message: 'Request timeout (lebih dari 30 detik). Cek koneksi internet atau URL GAS.' };
+                }
+                
+                if (error.message.includes('Failed to fetch') || error.message.includes('CORS')) {
+                    return { 
+                        success: false, 
+                        message: 'Tidak dapat terhubung ke server. Kemungkinan penyebab:\n1. URL GAS salah\n2. GAS belum di-deploy sebagai "Anyone"\n3. Masalah CORS dari Google\n\nCoba buka URL GAS langsung di browser baru.' 
+                    };
+                }
+                
+                return { success: false, message: error.message };
+            }
+        }
+
+        // ==================== WRAPPER KEAMANAN ====================
+        async function safeLoad(loadFunction, ...args) {
+            showLoading();
+            try {
+                await loadFunction(...args);
+            } catch (error) {
+                console.error('Error in safeLoad:', error);
+                showToast('Error: ' + error.message, 'error');
+            } finally {
+                hideLoading();
             }
         }
 
@@ -696,19 +778,26 @@
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             showLoading();
-            const username = document.getElementById('loginUsername').value;
-            const password = document.getElementById('loginPassword').value;
-            
-            const result = await apiRequest('login', { username, password });
-            hideLoading();
-            
-            if (result.success) {
-                currentUser = result.data;
-                localStorage.setItem('currentUser', JSON.stringify(currentUser));
-                showMainApp();
-            } else {
-                document.getElementById('loginError').textContent = result.message;
-                document.getElementById('loginError').classList.remove('hidden');
+            try {
+                const username = document.getElementById('loginUsername').value;
+                const password = document.getElementById('loginPassword').value;
+                
+                const result = await apiRequest('login', { username, password });
+                
+                if (result.success) {
+                    currentUser = result.data;
+                    localStorage.setItem('currentUser', JSON.stringify(currentUser));
+                    showToast('Login berhasil!', 'success');
+                    showMainApp();
+                } else {
+                    document.getElementById('loginError').textContent = result.message;
+                    document.getElementById('loginError').classList.remove('hidden');
+                    showToast(result.message, 'error');
+                }
+            } catch (error) {
+                showToast('Error: ' + error.message, 'error');
+            } finally {
+                hideLoading();
             }
         });
 
@@ -721,7 +810,7 @@
             }
         }
 
-        // ==================== NAVIGATION ====================
+        // ==================== NAVIGATION (DIPERBAIKI) ====================
         document.querySelectorAll('.menu-item').forEach(item => {
             item.addEventListener('click', () => {
                 const page = item.dataset.page;
@@ -730,13 +819,13 @@
                 document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
                 document.getElementById('page-' + page).classList.add('active');
                 
-                if (page === 'dashboard') loadDashboard();
-                if (page === 'siswa') loadSiswa();
-                if (page === 'kelas') loadKelas();
-                if (page === 'catatan') loadCatatanSiswaList();
-                if (page === 'rekap') loadRekap();
-                if (page === 'user') loadUser();
-                if (page === 'pengaturan') loadPengaturan();
+                if (page === 'dashboard') safeLoad(loadDashboard);
+                if (page === 'siswa') safeLoad(loadSiswa);
+                if (page === 'kelas') safeLoad(loadKelas);
+                if (page === 'catatan') safeLoad(loadCatatanSiswaList);
+                if (page === 'rekap') safeLoad(loadRekap);
+                if (page === 'user') safeLoad(loadUser);
+                if (page === 'pengaturan') safeLoad(loadPengaturan);
             });
         });
 
@@ -744,16 +833,20 @@
         async function showMainApp() {
             document.getElementById('loginPage').classList.add('hidden');
             document.getElementById('mainApp').classList.remove('hidden');
-            await loadPengaturan();
-            await loadKelasOptions();
-            loadDashboard();
+            
+            try {
+                await loadPengaturan();
+                await loadKelasOptions();
+                await loadDashboard();
+            } catch (error) {
+                console.error('Error in showMainApp:', error);
+                showToast('Ada masalah saat memuat data: ' + error.message, 'error');
+            }
         }
 
         // ==================== DASHBOARD ====================
         async function loadDashboard() {
-            showLoading();
             const result = await apiRequest('getDashboard');
-            hideLoading();
             
             if (result.success) {
                 document.getElementById('statSiswa').textContent = result.data.totalSiswa;
@@ -776,17 +869,17 @@
                 if (result.data.recent.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="4" class="px-4 py-8 text-center text-gray-500">Belum ada data pelanggaran</td></tr>';
                 }
+            } else {
+                showToast('Gagal memuat dashboard: ' + result.message, 'error');
             }
         }
 
         // ==================== SISWA ====================
         async function loadSiswa() {
-            showLoading();
             const search = document.getElementById('searchSiswa').value;
             const kelasFilter = document.getElementById('filterKelasSiswa').value;
             
             const result = await apiRequest('getSiswa', { search, kelas: kelasFilter });
-            hideLoading();
             
             if (result.success) {
                 allSiswa = result.data;
@@ -811,82 +904,90 @@
                 if (result.data.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">Belum ada data siswa</td></tr>';
                 }
+            } else {
+                showToast('Gagal memuat data siswa: ' + result.message, 'error');
             }
         }
 
-        document.getElementById('searchSiswa').addEventListener('input', loadSiswa);
-        document.getElementById('filterKelasSiswa').addEventListener('change', loadSiswa);
+        document.getElementById('searchSiswa').addEventListener('input', () => safeLoad(loadSiswa));
+        document.getElementById('filterKelasSiswa').addEventListener('change', () => safeLoad(loadSiswa));
 
         document.getElementById('formSiswa').addEventListener('submit', async (e) => {
             e.preventDefault();
             showLoading();
-            
-            const data = {
-                id: document.getElementById('siswaId').value,
-                nama: document.getElementById('siswaNama').value,
-                id_kelas: document.getElementById('siswaKelas').value,
-                nisn: document.getElementById('siswaNISN').value,
-                nis: document.getElementById('siswaNIS').value,
-                jk: document.getElementById('siswaJK').value,
-                ttl: document.getElementById('siswaTTL').value,
-                alamat: document.getElementById('siswaAlamat').value,
-                no_hp: document.getElementById('siswaHP').value
-            };
-            
-            const result = await apiRequest('saveSiswa', data);
-            hideLoading();
-            
-            if (result.success) {
-                hideModal('modalSiswa');
-                alert('Data siswa berhasil disimpan!');
-                loadSiswa();
-                loadKelasOptions();
-            } else {
-                alert(result.message);
+            try {
+                const data = {
+                    id: document.getElementById('siswaId').value,
+                    nama: document.getElementById('siswaNama').value,
+                    id_kelas: document.getElementById('siswaKelas').value,
+                    nisn: document.getElementById('siswaNISN').value,
+                    nis: document.getElementById('siswaNIS').value,
+                    jk: document.getElementById('siswaJK').value,
+                    ttl: document.getElementById('siswaTTL').value,
+                    alamat: document.getElementById('siswaAlamat').value,
+                    no_hp: document.getElementById('siswaHP').value
+                };
+                
+                const result = await apiRequest('saveSiswa', data);
+                
+                if (result.success) {
+                    hideModal('modalSiswa');
+                    showToast('Data siswa berhasil disimpan!', 'success');
+                    await loadSiswa();
+                    await loadKelasOptions();
+                } else {
+                    showToast(result.message, 'error');
+                }
+            } finally {
+                hideLoading();
             }
         });
 
         async function editSiswa(id) {
             showLoading();
-            const result = await apiRequest('getSiswaById', { id });
-            hideLoading();
-            
-            if (result.success) {
-                const siswa = result.data;
-                document.getElementById('modalSiswaTitle').textContent = 'Edit Siswa';
-                document.getElementById('siswaId').value = siswa.id;
-                document.getElementById('siswaNama').value = siswa.nama;
-                document.getElementById('siswaKelas').value = siswa.id_kelas || '';
-                document.getElementById('siswaNISN').value = siswa.nisn || '';
-                document.getElementById('siswaNIS').value = siswa.nis || '';
-                document.getElementById('siswaJK').value = siswa.jk || '';
-                document.getElementById('siswaTTL').value = siswa.ttl || '';
-                document.getElementById('siswaAlamat').value = siswa.alamat || '';
-                document.getElementById('siswaHP').value = siswa.no_hp || '';
-                showModal('modalSiswa');
+            try {
+                const result = await apiRequest('getSiswaById', { id });
+                if (result.success) {
+                    const siswa = result.data;
+                    document.getElementById('modalSiswaTitle').textContent = 'Edit Siswa';
+                    document.getElementById('siswaId').value = siswa.id;
+                    document.getElementById('siswaNama').value = siswa.nama;
+                    document.getElementById('siswaKelas').value = siswa.id_kelas || '';
+                    document.getElementById('siswaNISN').value = siswa.nisn || '';
+                    document.getElementById('siswaNIS').value = siswa.nis || '';
+                    document.getElementById('siswaJK').value = siswa.jk || '';
+                    document.getElementById('siswaTTL').value = siswa.ttl || '';
+                    document.getElementById('siswaAlamat').value = siswa.alamat || '';
+                    document.getElementById('siswaHP').value = siswa.no_hp || '';
+                    showModal('modalSiswa');
+                } else {
+                    showToast(result.message, 'error');
+                }
+            } finally {
+                hideLoading();
             }
         }
 
         async function hapusSiswa(id) {
             if (confirm('Yakin ingin menghapus data siswa ini?')) {
                 showLoading();
-                const result = await apiRequest('deleteSiswa', { id });
-                hideLoading();
-                
-                if (result.success) {
-                    alert('Data siswa berhasil dihapus!');
-                    loadSiswa();
-                } else {
-                    alert(result.message);
+                try {
+                    const result = await apiRequest('deleteSiswa', { id });
+                    if (result.success) {
+                        showToast('Data siswa berhasil dihapus!', 'success');
+                        await loadSiswa();
+                    } else {
+                        showToast(result.message, 'error');
+                    }
+                } finally {
+                    hideLoading();
                 }
             }
         }
 
         // ==================== KELAS ====================
         async function loadKelas() {
-            showLoading();
             const result = await apiRequest('getKelas');
-            hideLoading();
             
             if (result.success) {
                 allKelas = result.data;
@@ -908,6 +1009,8 @@
                 if (result.data.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="4" class="px-4 py-8 text-center text-gray-500">Belum ada data kelas</td></tr>';
                 }
+            } else {
+                showToast('Gagal memuat data kelas: ' + result.message, 'error');
             }
         }
 
@@ -931,62 +1034,68 @@
         document.getElementById('formKelas').addEventListener('submit', async (e) => {
             e.preventDefault();
             showLoading();
-            
-            const data = {
-                id: document.getElementById('kelasId').value,
-                nama: document.getElementById('kelasNama').value
-            };
-            
-            const result = await apiRequest('saveKelas', data);
-            hideLoading();
-            
-            if (result.success) {
-                hideModal('modalKelas');
-                document.getElementById('formKelas').reset();
-                document.getElementById('kelasId').value = '';
-                alert('Data kelas berhasil disimpan!');
-                loadKelas();
-                loadKelasOptions();
-            } else {
-                alert(result.message);
+            try {
+                const data = {
+                    id: document.getElementById('kelasId').value,
+                    nama: document.getElementById('kelasNama').value
+                };
+                
+                const result = await apiRequest('saveKelas', data);
+                
+                if (result.success) {
+                    hideModal('modalKelas');
+                    document.getElementById('formKelas').reset();
+                    document.getElementById('kelasId').value = '';
+                    showToast('Data kelas berhasil disimpan!', 'success');
+                    await loadKelas();
+                    await loadKelasOptions();
+                } else {
+                    showToast(result.message, 'error');
+                }
+            } finally {
+                hideLoading();
             }
         });
 
         async function editKelas(id) {
             showLoading();
-            const result = await apiRequest('getKelasById', { id });
-            hideLoading();
-            
-            if (result.success) {
-                document.getElementById('modalKelasTitle').textContent = 'Edit Kelas';
-                document.getElementById('kelasId').value = result.data.id;
-                document.getElementById('kelasNama').value = result.data.nama;
-                showModal('modalKelas');
+            try {
+                const result = await apiRequest('getKelasById', { id });
+                if (result.success) {
+                    document.getElementById('modalKelasTitle').textContent = 'Edit Kelas';
+                    document.getElementById('kelasId').value = result.data.id;
+                    document.getElementById('kelasNama').value = result.data.nama;
+                    showModal('modalKelas');
+                } else {
+                    showToast(result.message, 'error');
+                }
+            } finally {
+                hideLoading();
             }
         }
 
         async function hapusKelas(id) {
             if (confirm('Yakin ingin menghapus kelas ini? Siswa di kelas ini akan menjadi tidak memiliki kelas.')) {
                 showLoading();
-                const result = await apiRequest('deleteKelas', { id });
-                hideLoading();
-                
-                if (result.success) {
-                    alert('Kelas berhasil dihapus!');
-                    loadKelas();
-                    loadKelasOptions();
-                } else {
-                    alert(result.message);
+                try {
+                    const result = await apiRequest('deleteKelas', { id });
+                    if (result.success) {
+                        showToast('Kelas berhasil dihapus!', 'success');
+                        await loadKelas();
+                        await loadKelasOptions();
+                    } else {
+                        showToast(result.message, 'error');
+                    }
+                } finally {
+                    hideLoading();
                 }
             }
         }
 
         // ==================== CATATAN PELANGGARAN ====================
         async function loadCatatanSiswaList() {
-            showLoading();
             const search = document.getElementById('searchCatatanSiswa').value;
             const result = await apiRequest('getSiswaWithCatatan', { search, ...currentFilter });
-            hideLoading();
             
             if (result.success) {
                 const tbody = document.getElementById('tableCatatanSiswa');
@@ -1011,10 +1120,12 @@
                 if (result.data.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="5" class="px-4 py-8 text-center text-gray-500">Belum ada data</td></tr>';
                 }
+            } else {
+                showToast('Gagal memuat data: ' + result.message, 'error');
             }
         }
 
-        document.getElementById('searchCatatanSiswa').addEventListener('input', loadCatatanSiswaList);
+        document.getElementById('searchCatatanSiswa').addEventListener('input', () => safeLoad(loadCatatanSiswaList));
 
         function applyFilterCatatan() {
             currentFilter = {
@@ -1022,7 +1133,7 @@
                 tanggal_akhir: document.getElementById('filterTanggalAkhir').value,
                 id_kelas: document.getElementById('filterKelasCatatan').value
             };
-            loadCatatanSiswaList();
+            safeLoad(loadCatatanSiswaList);
         }
 
         function resetFilterCatatan() {
@@ -1030,58 +1141,62 @@
             document.getElementById('filterTanggalAkhir').value = '';
             document.getElementById('filterKelasCatatan').value = '';
             currentFilter = {};
-            loadCatatanSiswaList();
+            safeLoad(loadCatatanSiswaList);
         }
 
         async function viewDetailCatatan(siswaId) {
             currentSiswaId = siswaId;
             showLoading();
-            
-            const result = await apiRequest('getDetailCatatanSiswa', { id: siswaId, ...currentFilter });
-            hideLoading();
-            
-            if (result.success) {
-                const siswa = result.data.siswa;
-                document.getElementById('detailSiswaInfo').innerHTML = `
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-                        <div><span class="font-semibold">Nama:</span> ${siswa.nama}</div>
-                        <div><span class="font-semibold">Kelas:</span> ${siswa.nama_kelas || '-'}</div>
-                        <div><span class="font-semibold">NISN:</span> ${siswa.nisn || '-'}</div>
-                        <div><span class="font-semibold">NIS:</span> ${siswa.nis || '-'}</div>
-                        <div><span class="font-semibold">JK:</span> ${siswa.jk === 'L' ? 'Laki-laki' : siswa.jk === 'P' ? 'Perempuan' : '-'}</div>
-                        <div><span class="font-semibold">TTL:</span> ${siswa.ttl || '-'}</div>
-                        <div class="md:col-span-2"><span class="font-semibold">Alamat:</span> ${siswa.alamat || '-'}</div>
-                    </div>
-                `;
+            try {
+                const result = await apiRequest('getDetailCatatanSiswa', { id: siswaId, ...currentFilter });
                 
-                const tbody = document.getElementById('tableDetailCatatan');
-                tbody.innerHTML = '';
-                result.data.catatan.forEach((c, i) => {
-                    tbody.innerHTML += `
-                        <tr class="border-b hover:bg-gray-50">
-                            <td class="px-4 py-3 text-sm">${i + 1}</td>
-                            <td class="px-4 py-3 text-sm">${formatDateTime(c.waktu)}</td>
-                            <td class="px-4 py-3 text-sm font-medium">${c.jenis_pelanggaran}</td>
-                            <td class="px-4 py-3 text-sm">${c.tempat}</td>
-                            <td class="px-4 py-3 text-sm">
-                                ${c.bukti ? `<button onclick="lihatBukti('${c.bukti}')" class="text-blue-600 hover:text-blue-800"><i class="fas fa-image"></i> Lihat</button>` : '-'}
-                            </td>
-                            <td class="px-4 py-3 text-sm">
-                                <button onclick="editCatatan(${c.id})" class="text-blue-600 hover:text-blue-800 mr-2"><i class="fas fa-edit"></i></button>
-                                <button onclick="hapusCatatan(${c.id})" class="text-red-600 hover:text-red-800"><i class="fas fa-trash"></i></button>
-                            </td>
-                        </tr>
+                if (result.success) {
+                    const siswa = result.data.siswa;
+                    document.getElementById('detailSiswaInfo').innerHTML = `
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                            <div><span class="font-semibold">Nama:</span> ${siswa.nama}</div>
+                            <div><span class="font-semibold">Kelas:</span> ${siswa.nama_kelas || '-'}</div>
+                            <div><span class="font-semibold">NISN:</span> ${siswa.nisn || '-'}</div>
+                            <div><span class="font-semibold">NIS:</span> ${siswa.nis || '-'}</div>
+                            <div><span class="font-semibold">JK:</span> ${siswa.jk === 'L' ? 'Laki-laki' : siswa.jk === 'P' ? 'Perempuan' : '-'}</div>
+                            <div><span class="font-semibold">TTL:</span> ${siswa.ttl || '-'}</div>
+                            <div class="md:col-span-2"><span class="font-semibold">Alamat:</span> ${siswa.alamat || '-'}</div>
+                        </div>
                     `;
-                });
-                if (result.data.catatan.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-gray-500">Belum ada catatan pelanggaran</td></tr>';
+                    
+                    const tbody = document.getElementById('tableDetailCatatan');
+                    tbody.innerHTML = '';
+                    result.data.catatan.forEach((c, i) => {
+                        tbody.innerHTML += `
+                            <tr class="border-b hover:bg-gray-50">
+                                <td class="px-4 py-3 text-sm">${i + 1}</td>
+                                <td class="px-4 py-3 text-sm">${formatDateTime(c.waktu)}</td>
+                                <td class="px-4 py-3 text-sm font-medium">${c.jenis_pelanggaran}</td>
+                                <td class="px-4 py-3 text-sm">${c.tempat}</td>
+                                <td class="px-4 py-3 text-sm">
+                                    ${c.bukti ? `<button onclick="lihatBukti('${c.bukti}')" class="text-blue-600 hover:text-blue-800"><i class="fas fa-image"></i> Lihat</button>` : '-'}
+                                </td>
+                                <td class="px-4 py-3 text-sm">
+                                    <button onclick="editCatatan(${c.id})" class="text-blue-600 hover:text-blue-800 mr-2"><i class="fas fa-edit"></i></button>
+                                    <button onclick="hapusCatatan(${c.id})" class="text-red-600 hover:text-red-800"><i class="fas fa-trash"></i></button>
+                                </td>
+                            </tr>
+                        `;
+                    });
+                    if (result.data.catatan.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-gray-500">Belum ada catatan pelanggaran</td></tr>';
+                    }
+                    
+                    const now = new Date();
+                    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+                    document.getElementById('catatanWaktu').value = now.toISOString().slice(0, 16);
+                    
+                    showModal('modalDetailCatatan');
+                } else {
+                    showToast(result.message, 'error');
                 }
-                
-                const now = new Date();
-                now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-                document.getElementById('catatanWaktu').value = now.toISOString().slice(0, 16);
-                
-                showModal('modalDetailCatatan');
+            } finally {
+                hideLoading();
             }
         }
 
@@ -1114,47 +1229,53 @@
         document.getElementById('formCatatan').addEventListener('submit', async (e) => {
             e.preventDefault();
             showLoading();
-            
-            const data = {
-                id_siswa: currentSiswaId,
-                waktu: document.getElementById('catatanWaktu').value,
-                jenis_pelanggaran: document.getElementById('catatanJenis').value,
-                tempat: document.getElementById('catatanTempat').value,
-                uraian: document.getElementById('catatanUraian').value,
-                _files: {}
-            };
-            
-            const buktiFile = document.getElementById('catatanBukti').files[0];
-            if (buktiFile) {
-                data._files.bukti = buktiFile;
-            }
-            
-            const result = await apiRequest('saveCatatan', data);
-            hideLoading();
-            
-            if (result.success) {
-                alert('Catatan pelanggaran berhasil disimpan!');
-                hideAddCatatanForm();
-                viewDetailCatatan(currentSiswaId);
-            } else {
-                alert(result.message);
+            try {
+                const data = {
+                    id_siswa: currentSiswaId,
+                    waktu: document.getElementById('catatanWaktu').value,
+                    jenis_pelanggaran: document.getElementById('catatanJenis').value,
+                    tempat: document.getElementById('catatanTempat').value,
+                    uraian: document.getElementById('catatanUraian').value,
+                    _files: {}
+                };
+                
+                const buktiFile = document.getElementById('catatanBukti').files[0];
+                if (buktiFile) {
+                    data._files.bukti = buktiFile;
+                }
+                
+                const result = await apiRequest('saveCatatan', data);
+                
+                if (result.success) {
+                    showToast('Catatan pelanggaran berhasil disimpan!', 'success');
+                    hideAddCatatanForm();
+                    await viewDetailCatatan(currentSiswaId);
+                } else {
+                    showToast(result.message, 'error');
+                }
+            } finally {
+                hideLoading();
             }
         });
 
         async function editCatatan(id) {
             showLoading();
-            const result = await apiRequest('getCatatanById', { id });
-            hideLoading();
-            
-            if (result.success) {
-                const c = result.data;
-                document.getElementById('editCatatanId').value = c.id;
-                document.getElementById('editCatatanWaktu').value = c.waktu ? new Date(c.waktu).toISOString().slice(0, 16) : '';
-                document.getElementById('editCatatanJenis').value = c.jenis_pelanggaran;
-                document.getElementById('editCatatanTempat').value = c.tempat;
-                document.getElementById('editCatatanUraian').value = c.uraian || '';
-                document.getElementById('editPreviewBukti').classList.add('hidden');
-                showModal('modalEditCatatan');
+            try {
+                const result = await apiRequest('getCatatanById', { id });
+                if (result.success) {
+                    const c = result.data;
+                    document.getElementById('editCatatanId').value = c.id;
+                    document.getElementById('editCatatanWaktu').value = c.waktu ? new Date(c.waktu).toISOString().slice(0, 16) : '';
+                    document.getElementById('editCatatanJenis').value = c.jenis_pelanggaran;
+                    document.getElementById('editCatatanTempat').value = c.tempat;
+                    document.getElementById('editCatatanUraian').value = c.uraian || '';
+                    document.getElementById('editPreviewBukti').classList.add('hidden');
+                    showModal('modalEditCatatan');
+                } else {
+                    showToast(result.message, 'error');
+                }
+            } finally {
+                hideLoading();
             }
         }
 
@@ -1174,44 +1295,48 @@
         document.getElementById('formEditCatatan').addEventListener('submit', async (e) => {
             e.preventDefault();
             showLoading();
-            
-            const data = {
-                id: document.getElementById('editCatatanId').value,
-                waktu: document.getElementById('editCatatanWaktu').value,
-                jenis_pelanggaran: document.getElementById('editCatatanJenis').value,
-                tempat: document.getElementById('editCatatanTempat').value,
-                uraian: document.getElementById('editCatatanUraian').value,
-                _files: {}
-            };
-            
-            const buktiFile = document.getElementById('editCatatanBukti').files[0];
-            if (buktiFile) {
-                data._files.bukti = buktiFile;
-            }
-            
-            const result = await apiRequest('updateCatatan', data);
-            hideLoading();
-            
-            if (result.success) {
-                hideModal('modalEditCatatan');
-                alert('Catatan berhasil diperbarui!');
-                viewDetailCatatan(currentSiswaId);
-            } else {
-                alert(result.message);
+            try {
+                const data = {
+                    id: document.getElementById('editCatatanId').value,
+                    waktu: document.getElementById('editCatatanWaktu').value,
+                    jenis_pelanggaran: document.getElementById('editCatatanJenis').value,
+                    tempat: document.getElementById('editCatatanTempat').value,
+                    uraian: document.getElementById('editCatatanUraian').value,
+                    _files: {}
+                };
+                
+                const buktiFile = document.getElementById('editCatatanBukti').files[0];
+                if (buktiFile) {
+                    data._files.bukti = buktiFile;
+                }
+                
+                const result = await apiRequest('updateCatatan', data);
+                
+                if (result.success) {
+                    hideModal('modalEditCatatan');
+                    showToast('Catatan berhasil diperbarui!', 'success');
+                    await viewDetailCatatan(currentSiswaId);
+                } else {
+                    showToast(result.message, 'error');
+                }
+            } finally {
+                hideLoading();
             }
         });
 
         async function hapusCatatan(id) {
             if (confirm('Yakin ingin menghapus catatan ini?')) {
                 showLoading();
-                const result = await apiRequest('deleteCatatan', { id });
-                hideLoading();
-                
-                if (result.success) {
-                    alert('Catatan berhasil dihapus!');
-                    viewDetailCatatan(currentSiswaId);
-                } else {
-                    alert(result.message);
+                try {
+                    const result = await apiRequest('deleteCatatan', { id });
+                    if (result.success) {
+                        showToast('Catatan berhasil dihapus!', 'success');
+                        await viewDetailCatatan(currentSiswaId);
+                    } else {
+                        showToast(result.message, 'error');
+                    }
+                } finally {
+                    hideLoading();
                 }
             }
         }
@@ -1224,21 +1349,21 @@
         // ==================== DOWNLOAD WORD ====================
         async function downloadWord(type) {
             showLoading();
-            let data = { type };
-            
-            if (type === 'persiswa') {
-                data.id_siswa = currentSiswaId;
-            }
-            if (type === 'perkelas') {
-                const idKelas = prompt('Masukkan ID Kelas (atau kosongkan untuk semua per kelas):');
-                if (idKelas !== null) data.id_kelas = idKelas;
-                else { hideLoading(); return; }
-            }
-            
-            if (currentFilter.tanggal_mulai) data.tanggal_mulai = currentFilter.tanggal_mulai;
-            if (currentFilter.tanggal_akhir) data.tanggal_akhir = currentFilter.tanggal_akhir;
-            
             try {
+                let data = { type };
+                
+                if (type === 'persiswa') {
+                    data.id_siswa = currentSiswaId;
+                }
+                if (type === 'perkelas') {
+                    const idKelas = prompt('Masukkan ID Kelas (atau kosongkan untuk semua per kelas):');
+                    if (idKelas !== null) data.id_kelas = idKelas;
+                    else { hideLoading(); return; }
+                }
+                
+                if (currentFilter.tanggal_mulai) data.tanggal_mulai = currentFilter.tanggal_mulai;
+                if (currentFilter.tanggal_akhir) data.tanggal_akhir = currentFilter.tanggal_akhir;
+                
                 const formData = new FormData();
                 formData.append('action', 'generateWord');
                 formData.append('data', JSON.stringify(data));
@@ -1247,6 +1372,10 @@
                     method: 'POST',
                     body: formData
                 });
+                
+                if (!response.ok) {
+                    throw new Error('HTTP Error: ' + response.status);
+                }
                 
                 const blob = await response.blob();
                 const url = window.URL.createObjectURL(blob);
@@ -1257,20 +1386,20 @@
                 a.click();
                 window.URL.revokeObjectURL(url);
                 document.body.removeChild(a);
+                showToast('File berhasil didownload!', 'success');
             } catch (error) {
-                alert('Error download: ' + error.message);
+                showToast('Error download: ' + error.message, 'error');
+            } finally {
+                hideLoading();
             }
-            hideLoading();
         }
 
         // ==================== REKAP ====================
         async function loadRekap() {
-            showLoading();
             const tglMulai = document.getElementById('rekapTanggalMulai').value;
             const tglAkhir = document.getElementById('rekapTanggalAkhir').value;
             
             const result = await apiRequest('getRekap', { tanggal_mulai: tglMulai, tanggal_akhir: tglAkhir });
-            hideLoading();
             
             if (result.success) {
                 const tbody = document.getElementById('tableRekap');
@@ -1290,14 +1419,14 @@
                 if (result.data.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-gray-500">Tidak ada data pelanggaran pada periode ini</td></tr>';
                 }
+            } else {
+                showToast('Gagal memuat rekap: ' + result.message, 'error');
             }
         }
 
         // ==================== USER ====================
         async function loadUser() {
-            showLoading();
             const result = await apiRequest('getUsers');
-            hideLoading();
             
             if (result.success) {
                 const tbody = document.getElementById('tableUser');
@@ -1317,67 +1446,75 @@
                 if (result.data.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="3" class="px-4 py-8 text-center text-gray-500">Belum ada user</td></tr>';
                 }
+            } else {
+                showToast('Gagal memuat user: ' + result.message, 'error');
             }
         }
 
         document.getElementById('formUser').addEventListener('submit', async (e) => {
             e.preventDefault();
             showLoading();
-            
-            const data = {
-                id: document.getElementById('userId').value,
-                username: document.getElementById('userUsername').value,
-                password: document.getElementById('userPassword').value
-            };
-            
-            const result = await apiRequest('saveUser', data);
-            hideLoading();
-            
-            if (result.success) {
-                hideModal('modalUser');
-                document.getElementById('formUser').reset();
-                document.getElementById('userId').value = '';
-                alert('User berhasil disimpan!');
-                loadUser();
-            } else {
-                alert(result.message);
+            try {
+                const data = {
+                    id: document.getElementById('userId').value,
+                    username: document.getElementById('userUsername').value,
+                    password: document.getElementById('userPassword').value
+                };
+                
+                const result = await apiRequest('saveUser', data);
+                
+                if (result.success) {
+                    hideModal('modalUser');
+                    document.getElementById('formUser').reset();
+                    document.getElementById('userId').value = '';
+                    showToast('User berhasil disimpan!', 'success');
+                    await loadUser();
+                } else {
+                    showToast(result.message, 'error');
+                }
+            } finally {
+                hideLoading();
             }
         });
 
         async function editUser(id) {
             showLoading();
-            const result = await apiRequest('getUserById', { id });
-            hideLoading();
-            
-            if (result.success) {
-                document.getElementById('modalUserTitle').textContent = 'Edit User';
-                document.getElementById('userId').value = result.data.id;
-                document.getElementById('userUsername').value = result.data.username;
-                document.getElementById('userPassword').value = '';
-                showModal('modalUser');
+            try {
+                const result = await apiRequest('getUserById', { id });
+                if (result.success) {
+                    document.getElementById('modalUserTitle').textContent = 'Edit User';
+                    document.getElementById('userId').value = result.data.id;
+                    document.getElementById('userUsername').value = result.data.username;
+                    document.getElementById('userPassword').value = '';
+                    showModal('modalUser');
+                } else {
+                    showToast(result.message, 'error');
+                }
+            } finally {
+                hideLoading();
             }
         }
 
         async function hapusUser(id) {
             if (confirm('Yakin ingin menghapus user ini?')) {
                 showLoading();
-                const result = await apiRequest('deleteUser', { id });
-                hideLoading();
-                
-                if (result.success) {
-                    alert('User berhasil dihapus!');
-                    loadUser();
-                } else {
-                    alert(result.message);
+                try {
+                    const result = await apiRequest('deleteUser', { id });
+                    if (result.success) {
+                        showToast('User berhasil dihapus!', 'success');
+                        await loadUser();
+                    } else {
+                        showToast(result.message, 'error');
+                    }
+                } finally {
+                    hideLoading();
                 }
             }
         }
 
         // ==================== PENGATURAN ====================
         async function loadPengaturan() {
-            showLoading();
             const result = await apiRequest('getPengaturan');
-            hideLoading();
             
             if (result.success) {
                 const p = result.data;
@@ -1398,45 +1535,55 @@
                     const loginLogo = document.getElementById('loginLogo');
                     loginLogo.innerHTML = `<img src="${p.logo}" class="w-full h-full object-cover rounded-full">`;
                 }
+            } else {
+                console.warn('Gagal memuat pengaturan:', result.message);
             }
         }
 
         document.getElementById('formPengaturan').addEventListener('submit', async (e) => {
             e.preventDefault();
             showLoading();
-            
-            const data = {
-                nama_aplikasi: document.getElementById('setAppName').value,
-                nama_sekolah: document.getElementById('setSchoolName').value,
-                alamat_sekolah: document.getElementById('setAlamat').value,
-                _files: {}
-            };
-            
-            const logoFile = document.getElementById('setLogo').files[0];
-            if (logoFile) {
-                data._files.logo = logoFile;
-            }
-            
-            const result = await apiRequest('savePengaturan', data);
-            hideLoading();
-            
-            if (result.success) {
-                alert('Pengaturan berhasil disimpan!');
-                loadPengaturan();
-            } else {
-                alert(result.message);
+            try {
+                const data = {
+                    nama_aplikasi: document.getElementById('setAppName').value,
+                    nama_sekolah: document.getElementById('setSchoolName').value,
+                    alamat_sekolah: document.getElementById('setAlamat').value,
+                    _files: {}
+                };
+                
+                const logoFile = document.getElementById('setLogo').files[0];
+                if (logoFile) {
+                    data._files.logo = logoFile;
+                }
+                
+                const result = await apiRequest('savePengaturan', data);
+                
+                if (result.success) {
+                    showToast('Pengaturan berhasil disimpan!', 'success');
+                    await loadPengaturan();
+                } else {
+                    showToast(result.message, 'error');
+                }
+            } finally {
+                hideLoading();
             }
         });
 
         // ==================== INIT ====================
         const savedUser = localStorage.getItem('currentUser');
         if (savedUser) {
-            currentUser = JSON.parse(savedUser);
-            showMainApp();
+            try {
+                currentUser = JSON.parse(savedUser);
+                showMainApp();
+            } catch (e) {
+                localStorage.removeItem('currentUser');
+                loadPengaturan();
+            }
         } else {
             loadPengaturan();
         }
 
+        // Reset modal titles when hidden
         document.getElementById('modalSiswa').addEventListener('click', (e) => {
             if (e.target.id === 'modalSiswa') {
                 document.getElementById('modalSiswaTitle').textContent = 'Tambah Siswa';
@@ -1458,6 +1605,9 @@
                 document.getElementById('userId').value = '';
             }
         });
+
+        console.log('=== Aplikasi Siap ===');
+        console.log('GAS URL:', GAS_URL);
     </script>
 </body>
 </html>

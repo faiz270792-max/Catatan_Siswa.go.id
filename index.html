@@ -335,8 +335,8 @@
                         <form id="formCatatan">
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                                 <div>
-                                    <label class="block text-sm font-semibold mb-1">Tanggal & Waktu</label>
-                                    <input type="datetime-local" id="catatanWaktu" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    <label class="block text-sm font-semibold mb-1">Tanggal & Waktu <span class="text-gray-400 text-xs">(contoh: 12/09/2026 14:30)</span></label>
+                                    <input type="text" id="catatanWaktu" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="DD/MM/YYYY JJ:MM">
                                 </div>
                                 <div>
                                     <label class="block text-sm font-semibold mb-1">Jenis Pelanggaran</label>
@@ -600,8 +600,8 @@
                 <input type="hidden" id="editCatatanId">
                 <div class="space-y-4">
                     <div>
-                        <label class="block text-sm font-semibold mb-1">Tanggal & Waktu</label>
-                        <input type="datetime-local" id="editCatatanWaktu" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <label class="block text-sm font-semibold mb-1">Tanggal & Waktu <span class="text-gray-400 text-xs">(contoh: 12/09/2026 14:30)</span></label>
+                        <input type="text" id="editCatatanWaktu" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="DD/MM/YYYY JJ:MM">
                     </div>
                     <div>
                         <label class="block text-sm font-semibold mb-1">Jenis Pelanggaran</label>
@@ -773,6 +773,17 @@
             if (!dateStr) return '-';
             const d = new Date(dateStr);
             return d.toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+        }
+
+        // Format tanggal untuk input manual: DD/MM/YYYY JJ:MM
+        function formatTanggalManual(d) {
+            if (!d) return '';
+            const hari = String(d.getDate()).padStart(2, '0');
+            const bulan = String(d.getMonth() + 1).padStart(2, '0');
+            const tahun = d.getFullYear();
+            const jam = String(d.getHours()).padStart(2, '0');
+            const menit = String(d.getMinutes()).padStart(2, '0');
+            return `${hari}/${bulan}/${tahun} ${jam}:${menit}`;
         }
 
         // ==================== AUTH ====================
@@ -1189,8 +1200,7 @@
                     }
                     
                     const now = new Date();
-                    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-                    document.getElementById('catatanWaktu').value = now.toISOString().slice(0, 16);
+                    document.getElementById('catatanWaktu').value = formatTanggalManual(now);
                     
                     showModal('modalDetailCatatan');
                 } else {
@@ -1206,8 +1216,7 @@
             document.getElementById('formCatatan').reset();
             document.getElementById('previewBukti').classList.add('hidden');
             const now = new Date();
-            now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-            document.getElementById('catatanWaktu').value = now.toISOString().slice(0, 16);
+            document.getElementById('catatanWaktu').value = formatTanggalManual(now);
         }
 
         function hideAddCatatanForm() {
@@ -1268,7 +1277,7 @@
                 if (result.success) {
                     const c = result.data;
                     document.getElementById('editCatatanId').value = c.id;
-                    document.getElementById('editCatatanWaktu').value = c.waktu ? new Date(c.waktu).toISOString().slice(0, 16) : '';
+                    document.getElementById('editCatatanWaktu').value = c.waktu ? formatTanggalManual(new Date(c.waktu)) : '';
                     document.getElementById('editCatatanJenis').value = c.jenis_pelanggaran;
                     document.getElementById('editCatatanTempat').value = c.tempat;
                     document.getElementById('editCatatanUraian').value = c.uraian || '';

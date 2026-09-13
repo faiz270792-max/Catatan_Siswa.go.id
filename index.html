@@ -71,17 +71,18 @@
             
             .sidebar { 
                 position: fixed; 
-                top: 56px; 
+                top: 0; 
                 left: 0; 
-                height: calc(100vh - 56px); 
+                height: 100vh; 
                 width: 280px; 
                 transform: translateX(-100%); 
                 padding-top: 0;
-                z-index: 60 !important;
+                z-index: 70 !important;
                 box-shadow: 4px 0 20px rgba(0,0,0,0.3);
             }
             .sidebar.open { transform: translateX(0); }
-            .sidebar .menu-item { position: relative; z-index: 61; cursor: pointer; }
+            .sidebar > div:first-child { padding-top: 24px !important; }
+            .sidebar .menu-item { position: relative; z-index: 71; cursor: pointer; }
             
             .main-content { 
                 margin-left: 0 !important; 
@@ -119,7 +120,10 @@
     <!-- Toast Notification -->
     <div id="toast" class="toast"></div>
 
-    <!-- Loading Overlay -->
+    <!-- Loading Bar Tipis (tidak mengganggu) -->
+    <div id="loadingBar" style="display:none; position:fixed; top:0; left:0; height:3px; background:linear-gradient(90deg,#3b82f6,#8b5cf6); z-index:9999; width:0%; transition:width 0.3s;"></div>
+
+    <!-- Loading Overlay (hanya untuk operasi berat: upload & download) -->
     <div id="loading" class="loading">
         <div class="text-center">
             <div class="spinner mx-auto mb-4"></div>
@@ -179,7 +183,8 @@
 
         <!-- Sidebar -->
         <div id="sidebar" class="sidebar fixed left-0 top-0 h-full w-64 bg-gradient-to-b from-blue-700 to-indigo-900 text-white z-[60]">
-            <div class="p-3 md:p-6 border-b border-blue-500">
+            <div class="p-3 md:p-6 border-b border-blue-500 relative">
+                <button onclick="toggleSidebar()" class="md:hidden absolute top-2 right-2 text-white text-2xl p-2 hover:bg-white/10 rounded-lg">&times;</button>
                 <div class="flex items-center">
                     <div id="sidebarLogo" class="w-14 h-14 md:w-12 md:h-12 bg-white rounded-full flex items-center justify-center mr-3 overflow-hidden">
                         <i class="fas fa-graduation-cap text-2xl md:text-xl text-blue-600"></i>
@@ -747,12 +752,27 @@
         let allSiswa = [];
 
         // ==================== UTILITIES ====================
+        // Loading RINGAN: loading bar tipis di atas (untuk pindah menu)
         function showLoading() { 
+            const bar = document.getElementById('loadingBar');
+            bar.style.display = 'block';
+            bar.style.width = '30%';
+            setTimeout(() => { bar.style.width = '70%'; }, 200);
+        }
+        
+        // Loading PENUH: overlay menutupi layar (hanya untuk upload & download)
+        function showFullLoading() { 
             document.getElementById('loading').classList.add('show'); 
         }
         
         function hideLoading() { 
             document.getElementById('loading').classList.remove('show'); 
+            const bar = document.getElementById('loadingBar');
+            bar.style.width = '100%';
+            setTimeout(() => { 
+                bar.style.display = 'none'; 
+                bar.style.width = '0%'; 
+            }, 300);
         }
         
         function showModal(id) { 
@@ -1350,7 +1370,7 @@
 
         document.getElementById('formCatatan').addEventListener('submit', async (e) => {
             e.preventDefault();
-            showLoading();
+            showFullLoading();
             try {
                 const data = {
                     id_siswa: currentSiswaId,
@@ -1418,7 +1438,7 @@
 
         document.getElementById('formEditCatatan').addEventListener('submit', async (e) => {
             e.preventDefault();
-            showLoading();
+            showFullLoading();
             try {
                 const data = {
                     id: document.getElementById('editCatatanId').value,
@@ -1474,7 +1494,7 @@
 
         // ==================== DOWNLOAD WORD ====================
         async function downloadWord(type) {
-            showLoading();
+            showFullLoading();
             try {
                 let data = { type };
                 
@@ -1674,7 +1694,7 @@
 
         document.getElementById('formPengaturan').addEventListener('submit', async (e) => {
             e.preventDefault();
-            showLoading();
+            showFullLoading();
             try {
                 const data = {
                     nama_aplikasi: document.getElementById('setAppName').value,
